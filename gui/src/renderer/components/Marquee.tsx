@@ -1,82 +1,92 @@
-import * as React from 'react';
-import { Animated, Component, Styles, Types, UserInterface, View } from 'reactxp';
+import React from 'react';
+import styled from 'styled-components';
 import { Scheduler } from '../../shared/scheduler';
 
-const styles = {
-  text: Styles.createTextStyle({
-    // @ts-ignore
-    width: 'fit-content',
+const Text = styled.span(
+  {
+    position: 'relative',
     whiteSpace: 'nowrap',
+  },
+  (props: { overflow: number; alignRight: boolean; reset: boolean }) => ({
+    left: props.alignRight ? -props.overflow + 'px' : '0',
+    transition: `left linear ${props.reset ? 0 : props.overflow * 80}ms`,
   }),
-};
+);
 
 interface IMarqueeProps {
-  style?: Types.StyleRuleSetRecursive<Types.ButtonStyleRuleSet>;
+  className?: string;
+  children?: React.ReactNode;
 }
 
-export default class Marquee extends Component<IMarqueeProps> {
-  private initialLeft = Animated.createValue(0.0);
-  private textAnimation = Styles.createAnimatedTextStyle({ left: this.initialLeft });
-  private textRef = React.createRef<Animated.Text>();
+interface IMarqueeState {
+  alignRight: boolean;
+  reset: boolean;
+}
 
-  private animationScheduler = new Scheduler();
-  private animation?: Types.Animated.CompositeAnimation;
+export default class Marquee extends React.Component<IMarqueeProps, IMarqueeState> {
+  private textRef = React.createRef<HTMLSpanElement>();
+  private scheduler = new Scheduler();
+
+  public state = {
+    alignRight: false,
+    reset: false,
+  };
 
   public componentDidMount() {
-    this.startAnimation();
+    this.startAnimationIfOverflow();
   }
 
-  public componentDidUpdate() {
-    this.startAnimation();
+  // When props.children change the content should be reset to the left and restarted if it doesn't
+  // fit it should start animating.
+  public componentDidUpdate(prevProps: IMarqueeProps) {
+    if (this.props.children !== prevProps.children) {
+      // Reset content to the left.
+      this.scheduler.cancel();
+      this.setState({
+        alignRight: false,
+        reset: true,
+      });
+    } else if (this.state.reset) {
+      // Restart animation if it was reset.
+      this.setState({ reset: false }, this.startAnimationIfOverflow);
+    }
   }
 
   public componentWillUnmount() {
-    this.stopAnimation();
+    this.scheduler.cancel();
   }
 
   public render() {
     return (
-      <View>
-        <Animated.Text
+      <div>
+        <Text
           ref={this.textRef}
-          style={[styles.text, this.textAnimation, this.props.style]}>
+          className={this.props.className}
+          overflow={this.calculateOverflow()}
+          alignRight={this.state.alignRight}
+          reset={this.state.reset}
+          onTransitionEnd={this.scheduleToggleAlignRight}>
           {this.props.children}
-        </Animated.Text>
-      </View>
+        </Text>
+      </div>
     );
   }
 
-  private startAnimation() {
-    this.stopAnimation();
-
-    this.animationScheduler.schedule(async () => {
-      if (this.textRef.current) {
-        const textLayout = await UserInterface.measureLayoutRelativeToWindow(this.textRef.current);
-        const viewLayout = await UserInterface.measureLayoutRelativeToWindow(this);
-        this.startAnimationImpl(textLayout.width - viewLayout.width, false);
-      }
-    }, 1000);
-  }
-
-  private startAnimationImpl(length: number, reverse: boolean) {
-    if (length >= 0) {
-      this.animation = Animated.timing(this.initialLeft, {
-        toValue: reverse ? 0.0 : -length,
-        duration: length * 80,
-        delay: 2000,
-        easing: Animated.Easing.Linear(),
-      });
-
-      this.animation.start(({ finished }) => {
-        if (finished) {
-          this.startAnimationImpl(length, !reverse);
-        }
-      });
+  private startAnimationIfOverflow = () => {
+    if (this.calculateOverflow() > 0) {
+      this.scheduleToggleAlignRight();
     }
-  }
+  };
 
-  private stopAnimation() {
-    this.animationScheduler.cancel();
-    this.animation?.stop();
+  private scheduleToggleAlignRight = () => {
+    this.scheduler.schedule(() => {
+      this.setState((state) => ({ alignRight: !state.alignRight }));
+    }, 2000);
+  };
+
+  private calculateOverflow() {
+    const textWidth = this.textRef.current?.offsetWidth ?? 0;
+    const parentWidth = this.textRef.current?.parentElement?.offsetWidth ?? 0;
+    return textWidth - parentWidth;
   }
 }
