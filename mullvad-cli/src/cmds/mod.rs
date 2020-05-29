@@ -34,6 +34,9 @@ pub use self::relay::Relay;
 mod reset;
 pub use self::reset::Reset;
 
+mod split_tunnel;
+pub use self::split_tunnel::SplitTunnel;
+
 mod status;
 pub use self::status::Status;
 
@@ -57,6 +60,8 @@ pub fn get_commands() -> HashMap<&'static str, Box<dyn Command>> {
         Box::new(Lan),
         Box::new(Relay),
         Box::new(Reset),
+        #[cfg(windows)]
+        Box::new(SplitTunnel),
         Box::new(Status),
         Box::new(Tunnel),
         Box::new(Version),
